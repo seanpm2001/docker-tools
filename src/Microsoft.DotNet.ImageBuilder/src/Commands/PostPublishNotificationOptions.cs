@@ -22,7 +22,12 @@ namespace Microsoft.DotNet.ImageBuilder.Commands
 
     public class PostPublishNotificationOptionsBuilder : ManifestOptionsBuilder
     {
-        private readonly AzdoOptionsBuilder _azdoOptionsBuilder = new();
+        private readonly AzdoOptionsBuilder _azdoOptionsBuilder =
+            AzdoOptionsBuilder.Build()
+                .WithAccessToken(isRequired: true)
+                .WithOrganization(isRequired: true)
+                .WithProject(isRequired: true);
+
         private readonly GitOptionsBuilder _gitOptionsBuilder =
             GitOptionsBuilder.Build()
                 .WithAuthToken(isRequired: true, description: "Auth token to use to connect to GitHub for posting notifications")

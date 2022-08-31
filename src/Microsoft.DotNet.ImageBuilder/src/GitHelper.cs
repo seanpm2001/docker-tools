@@ -54,8 +54,14 @@ namespace Microsoft.DotNet.ImageBuilder
         public static Uri GetBlobUrl(IGitHubFileRef fileRef) =>
             new Uri($"https://github.com/{fileRef.Owner}/{fileRef.Repo}/blob/{fileRef.Branch}/{fileRef.Path}");
 
+        public static Uri GetFileUrl(AzdoOptions options) =>
+            new($"https://dev.azure.com/{options.Organization}/{options.Project}/_git/{options.AzdoRepo}?path={options.AzdoPath}&version=GB{options.AzdoBranch}");
+
         public static Uri GetCommitUrl(IGitHubRepoRef repoRef, string sha) =>
             new Uri($"https://github.com/{repoRef.Owner}/{repoRef.Repo}/commit/{sha}");
+
+        public static Uri GetCommitUrl(AzdoOptions options, string sha) =>
+            new($"https://dev.azure.com/{options.Organization}/{options.Project}/_git/{options.AzdoRepo}/commit/{sha}");
 
         public static async Task<GitReference> PushChangesAsync(IGitHubClient client, IGitOptionsHost options, string commitMessage, Func<GitHubBranch, Task<IEnumerable<GitObject>>> getChanges)
         {

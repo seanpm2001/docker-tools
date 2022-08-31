@@ -423,7 +423,6 @@ namespace Microsoft.DotNet.ImageBuilder.Tests
             Mock<Network> networkMock = Mock.Get(repositoryMock.Object.Network);
 
             networkMock.Verify(o => o.Push(It.IsAny<Branch>(), It.IsAny<PushOptions>()));
-            networkMock.Verify(o => o.Push(It.IsAny<Remote>(), It.IsAny<string>(), It.IsAny<PushOptions>()));
         }
 
         private static Mock<IRepository> GetRepositoryMock()

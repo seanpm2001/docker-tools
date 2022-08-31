@@ -2,10 +2,7 @@
 // The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
-using System.Collections.Generic;
-using System.CommandLine;
 using Microsoft.VisualStudio.Services.Common;
-using static Microsoft.DotNet.ImageBuilder.Commands.CliHelper;
 
 #nullable enable
 namespace Microsoft.DotNet.ImageBuilder.Commands
@@ -28,23 +25,64 @@ namespace Microsoft.DotNet.ImageBuilder.Commands
             (new Uri($"https://dev.azure.com/{Organization}"), new VssBasicCredential(string.Empty, AccessToken));
     }
 
-    public class AzdoOptionsBuilder
+    public class AzdoOptionsBuilder : OptionsBuilder
     {
-        public IEnumerable<Argument> GetCliArguments() =>
-            new Argument[]
-            {
-                new Argument<string>(nameof(AzdoOptions.AccessToken), "Azure DevOps PAT"),
-                new Argument<string>(nameof(AzdoOptions.Organization), "Azure DevOps organization"),
-                new Argument<string>(nameof(AzdoOptions.Project), "Azure DevOps project")
-            };
+        private AzdoOptionsBuilder()
+        {
+        }
 
-        public IEnumerable<Option> GetCliOptions() =>
-            new Option[]
-            {
-                CreateOption<string?>("azdo-repo", nameof(AzdoOptions.AzdoRepo), "Azure DevOps repo"),
-                CreateOption<string?>("azdo-branch", nameof(AzdoOptions.AzdoBranch), "Azure DevOps branch (default: main)", "main"),
-                CreateOption<string?>("azdo-path", nameof(AzdoOptions.AzdoPath), "Azure DevOps path"),
-            };
+        public static AzdoOptionsBuilder Build() => new();
+
+        public static AzdoOptionsBuilder BuildWithDefaults() =>
+            Build()
+                .WithAccessToken(isRequired: true)
+                .WithOrganization(isRequired: true)
+                .WithProject(isRequired: true)
+                .WithRepo()
+                .WithBranch()
+                .WithPath();
+
+        public AzdoOptionsBuilder WithRepo(
+            bool isRequired = false,
+            string? defaultValue = null,
+            string description = "Azure DevOps repo") =>
+            AddSymbol<AzdoOptionsBuilder, string>(
+                "azdo-repo", nameof(AzdoOptions.AzdoRepo), isRequired, defaultValue, description);
+
+        public AzdoOptionsBuilder WithBranch(
+            bool isRequired = false,
+            string? defaultValue = "main",
+            string description = "Azure DevOps branch") =>
+            AddSymbol<AzdoOptionsBuilder, string>(
+                "azdo-branch", nameof(AzdoOptions.AzdoBranch), isRequired, defaultValue, description);
+
+        public AzdoOptionsBuilder WithPath(
+            bool isRequired = false,
+            string? defaultValue = null,
+            string description = "Azure DevOps path") =>
+            AddSymbol<AzdoOptionsBuilder, string>(
+                "azdo-path", nameof(AzdoOptions.AzdoPath), isRequired, defaultValue, description);
+
+        public AzdoOptionsBuilder WithAccessToken(
+            bool isRequired = false,
+            string? defaultValue = null,
+            string description = "Azure DevOps access token") =>
+            AddSymbol<AzdoOptionsBuilder, string>(
+                "azdo-pat", nameof(AzdoOptions.AccessToken), isRequired, defaultValue, description);
+
+        public AzdoOptionsBuilder WithOrganization(
+            bool isRequired = false,
+            string? defaultValue = null,
+            string description = "Azure DevOps organization") =>
+            AddSymbol<AzdoOptionsBuilder, string>(
+                "azdo-org", nameof(AzdoOptions.Organization), isRequired, defaultValue, description);
+
+        public AzdoOptionsBuilder WithProject(
+            bool isRequired = false,
+            string? defaultValue = null,
+            string description = "Azure DevOps project") =>
+            AddSymbol<AzdoOptionsBuilder, string>(
+                "azdo-project", nameof(AzdoOptions.Project), isRequired, defaultValue, description);
     }
 }
 #nullable disable

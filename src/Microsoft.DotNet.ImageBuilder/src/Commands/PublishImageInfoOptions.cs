@@ -17,8 +17,24 @@ namespace Microsoft.DotNet.ImageBuilder.Commands
 
     public class PublishImageInfoOptionsBuilder : ImageInfoOptionsBuilder
     {
-        private readonly AzdoOptionsBuilder _azdoOptionsBuilder = new AzdoOptionsBuilder();
-        private readonly GitOptionsBuilder _gitOptionsBuilder = GitOptionsBuilder.BuildWithDefaults();
+        private readonly AzdoOptionsBuilder _azdoOptionsBuilder =
+            AzdoOptionsBuilder.Build()
+                .WithAccessToken()
+                .WithOrganization()
+                .WithProject()
+                .WithRepo()
+                .WithBranch()
+                .WithPath();
+
+        private readonly GitOptionsBuilder _gitOptionsBuilder =
+            GitOptionsBuilder.Build()
+                .WithUsername()
+                .WithEmail()
+                .WithAuthToken()
+                .WithBranch()
+                .WithOwner()
+                .WithPath()
+                .WithRepo();
 
         public override IEnumerable<Option> GetCliOptions() =>
             base.GetCliOptions()

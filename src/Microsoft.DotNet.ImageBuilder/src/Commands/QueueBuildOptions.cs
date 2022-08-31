@@ -5,6 +5,7 @@
 using System.Collections.Generic;
 using System.CommandLine;
 using System.Linq;
+using Newtonsoft.Json;
 using static Microsoft.DotNet.ImageBuilder.Commands.CliHelper;
 
 #nullable enable
@@ -20,7 +21,12 @@ namespace Microsoft.DotNet.ImageBuilder.Commands
 
     public class QueueBuildOptionsBuilder : CliOptionsBuilder
     {
-        private readonly AzdoOptionsBuilder _azdoOptionsBuilder = new();
+        private readonly AzdoOptionsBuilder _azdoOptionsBuilder =
+            AzdoOptionsBuilder.Build()
+                .WithAccessToken(isRequired: true)
+                .WithOrganization(isRequired: true)
+                .WithProject(isRequired: true);
+
         private readonly GitOptionsBuilder _gitOptionsBuilder =
             GitOptionsBuilder.Build()
                 .WithAuthToken(description: "Auth token to use to connect to GitHub for posting notifications")

@@ -32,7 +32,9 @@ namespace Microsoft.DotNet.ImageBuilder.Commands
 
         public override Task ExecuteAsync()
         {
-            if (Options.AzdoOptions.AzdoPath != Options.GitOptions.Path)
+            if (!string.IsNullOrEmpty(Options.GitOptions.Path) &&
+                !string.IsNullOrEmpty(Options.AzdoOptions.AzdoPath) &&
+                Options.AzdoOptions.AzdoPath != Options.GitOptions.Path)
             {
                 throw new InvalidOperationException(
                     $"The file path for GitHub '{Options.GitOptions.Path}' must be equal to the file path for AzDO '{Options.AzdoOptions.AzdoPath}'.");
@@ -48,16 +50,12 @@ namespace Microsoft.DotNet.ImageBuilder.Commands
 
             try
             {
-                _loggerService.WriteSubheading("Cloning GitHub repo");
-                using IRepository repo =_gitService.CloneRepository(
-                    $"https://github.com/{Options.GitOptions.Owner}/{Options.GitOptions.Repo}",
-                    repoPath,
-                    new CloneOptions
-                    {
-                        BranchName = Options.GitOptions.Branch
-                    });
+                GitRepoProvider gitRepoProvider = GitRepoProvider.Create(_gitService, Options);
 
-                Uri imageInfoPathIdentifier = GitHelper.GetBlobUrl(Options.GitOptions);
+                _loggerService.WriteSubheading("Cloning GitHub repo");
+                using IRepository repo = gitRepoProvider.CloneRepository(repoPath);
+
+                Uri imageInfoPathIdentifier = gitRepoProvider.GetFileUrl();
 
                 _loggerService.WriteSubheading("Calculating new image info content");
                 string? imageInfoContent = GetUpdatedImageInfo(repoPath);
@@ -74,7 +72,7 @@ namespace Microsoft.DotNet.ImageBuilder.Commands
 
                 if (!Options.IsDryRun)
                 {
-                    UpdateGitRepos(imageInfoContent, repoPath, repo);
+                    UpdateGitRepos(imageInfoContent, repoPath, repo, gitRepoProvider);
                 }
             }
             finally
@@ -88,48 +86,19 @@ namespace Microsoft.DotNet.ImageBuilder.Commands
             return Task.CompletedTask;
         }
 
-        private void UpdateGitRepos(string imageInfoContent, string repoPath, IRepository repo)
+        private void UpdateGitRepos(string imageInfoContent, string repoPath, IRepository repo, GitRepoProvider gitRepoProvider)
         {
-            Remote azdoRemote = repo.Network.Remotes.Add("azdo",
-                $"https://dev.azure.com/{Options.AzdoOptions.Organization}/{Options.AzdoOptions.Project}/_git/{Options.AzdoOptions.AzdoRepo}");
+            string fullImageInfoPath = Path.Combine(repoPath, gitRepoProvider.ImageInfoPath);
+            File.WriteAllText(fullImageInfoPath, imageInfoContent);
+            _gitService.Stage(repo, fullImageInfoPath);
 
-            string imageInfoPath = Path.Combine(repoPath, Options.GitOptions.Path);
-            File.WriteAllText(imageInfoPath, imageInfoContent);
-
-            _gitService.Stage(repo, imageInfoPath);
-            Signature sig = new Signature(Options.GitOptions.Username, Options.GitOptions.Email, DateTimeOffset.Now);
+            Signature sig = new(Options.GitOptions.Username, Options.GitOptions.Email, DateTimeOffset.Now);
             Commit commit = repo.Commit(CommitMessage, sig, sig);
 
-            Branch branch = repo.Branches[Options.GitOptions.Branch];
+            _loggerService.WriteSubheading("Pushing changes");
+            Uri commitUrl = gitRepoProvider.PushChanges(repo, commit.Sha);
 
-            _loggerService.WriteSubheading("Pushing changes to GitHub");
-            repo.Network.Push(branch,
-                new PushOptions
-                {
-                    CredentialsProvider = (url, user, cred) => new UsernamePasswordCredentials
-                    {
-                        Username = Options.GitOptions.AuthToken,
-                        Password = string.Empty
-                    }
-                });
-
-            Uri gitHubCommitUrl = GitHelper.GetCommitUrl(Options.GitOptions, commit.Sha);
-            _loggerService.WriteMessage($"The '{Options.GitOptions.Path}' file was updated: {gitHubCommitUrl}");
-
-            _loggerService.WriteSubheading("Pushing changes to Azure DevOps");
-            repo.Network.Push(azdoRemote, branch.CanonicalName,
-                new PushOptions
-                {
-                    CredentialsProvider = (url, user, cred) => new UsernamePasswordCredentials
-                    {
-                        Username = Options.AzdoOptions.AccessToken,
-                        Password = string.Empty
-                    }
-                });
-
-            string azdoUrl =
-                $"https://dev.azure.com/{Options.AzdoOptions.Organization}/{Options.AzdoOptions.Project}/_git/{Options.AzdoOptions.AzdoRepo}/commit/{commit.Sha}";
-            _loggerService.WriteMessage($"The '{Options.AzdoOptions.AzdoPath}' file was updated: {azdoUrl}");
+            _loggerService.WriteMessage($"The '{gitRepoProvider.ImageInfoPath}' file was updated: {commitUrl}");
         }
 
         private string? GetUpdatedImageInfo(string repoPath)
@@ -227,6 +196,120 @@ namespace Microsoft.DotNet.ImageBuilder.Commands
                 throw new InvalidOperationException(
                     "Removal of out-of-date content resulted in there being no content remaining in the target image info file. Something is probably wrong with the logic.");
             }
+        }
+
+        private abstract class GitRepoProvider
+        {
+            public static GitRepoProvider Create(IGitService gitService, PublishImageInfoOptions options)
+            {
+                if (!string.IsNullOrEmpty(options.GitOptions.Path))
+                {
+                    return new GitHubRepoProvider(gitService, options);
+                }
+                else if (!string.IsNullOrEmpty(options.AzdoOptions.AzdoPath))
+                {
+                    return new AzdoRepoProvider(gitService, options);
+                }
+
+                throw new InvalidDataException("Either GitHub or AzDO options must be specified.");
+            }
+
+            public abstract string ImageInfoPath { get; }
+
+            protected abstract string Branch { get; }
+
+            protected abstract string AccessToken { get; }
+
+            public abstract IRepository CloneRepository(string repoPath);
+
+            public abstract Uri GetFileUrl();
+
+            public abstract Uri GetCommitUrl(string commitSha);
+
+            public Uri PushChanges(IRepository repo, string commitSha)
+            {
+                Branch branch = repo.Branches[Branch];
+
+                repo.Network.Push(branch,
+                    new PushOptions
+                    {
+                        CredentialsProvider = (url, user, cred) => new UsernamePasswordCredentials
+                        {
+                            Username = AccessToken,
+                            Password = string.Empty
+                        }
+                    });
+
+                Uri gitHubCommitUrl = GetCommitUrl(commitSha);
+                return gitHubCommitUrl;
+            }
+        }
+
+        private class GitHubRepoProvider : GitRepoProvider
+        {
+            private readonly IGitService _gitService;
+            private readonly PublishImageInfoOptions _options;
+
+            public GitHubRepoProvider(IGitService gitService, PublishImageInfoOptions options)
+            {
+                _gitService = gitService;
+                _options = options;
+            }
+
+            public override string ImageInfoPath => _options.GitOptions.Path;
+
+            protected override string Branch => _options.GitOptions.Branch;
+
+            protected override string AccessToken => _options.GitOptions.AuthToken;
+
+            public override IRepository CloneRepository(string repoPath) =>
+                _gitService.CloneRepository(
+                    $"https://github.com/{_options.GitOptions.Owner}/{_options.GitOptions.Repo}",
+                    repoPath,
+                    new CloneOptions
+                    {
+                        BranchName = _options.GitOptions.Branch
+                    });
+
+            public override Uri GetFileUrl() => GitHelper.GetBlobUrl(_options.GitOptions);
+
+            public override Uri GetCommitUrl(string commitSha) => GitHelper.GetCommitUrl(_options.GitOptions, commitSha);
+        }
+
+        private class AzdoRepoProvider : GitRepoProvider
+        {
+            private readonly IGitService _gitService;
+            private readonly PublishImageInfoOptions _options;
+
+            public AzdoRepoProvider(IGitService gitService, PublishImageInfoOptions options)
+            {
+                _gitService = gitService;
+                _options = options;
+            }
+
+            public override string ImageInfoPath => _options.AzdoOptions.AzdoPath!;
+
+            protected override string Branch => _options.AzdoOptions.AzdoBranch!;
+
+            protected override string AccessToken => _options.AzdoOptions.AccessToken;
+
+            public override IRepository CloneRepository(string repoPath) =>
+                _gitService.CloneRepository(
+                    $"https://dev.azure.com/{_options.AzdoOptions.Organization}/{_options.AzdoOptions.Project}/_git/{_options.AzdoOptions.AzdoRepo}",
+                    repoPath,
+                    new CloneOptions
+                    {
+                        BranchName = _options.AzdoOptions.AzdoBranch,
+                        CredentialsProvider = (url, user, cred) => new UsernamePasswordCredentials
+                        {
+                            Username = _options.AzdoOptions.AccessToken,
+                            Password = string.Empty
+                        }
+                    });
+
+            public override Uri GetFileUrl() => GitHelper.GetFileUrl(_options.AzdoOptions);
+
+            public override Uri GetCommitUrl(string commitSha) => GitHelper.GetCommitUrl(_options.AzdoOptions, commitSha);
         }
     }
 }
