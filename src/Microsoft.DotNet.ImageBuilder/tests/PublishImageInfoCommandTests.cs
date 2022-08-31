@@ -189,6 +189,7 @@ namespace Microsoft.DotNet.ImageBuilder.Tests
                 PublishImageInfoCommand command = new PublishImageInfoCommand(gitServiceMock.Object, Mock.Of<ILoggerService>());
                 command.Options.ImageInfoPath = file;
                 command.Options.GitOptions = gitOptions;
+                command.Options.AzdoOptions = azdoOptions;
                 command.Options.Manifest = Path.Combine(tempFolderContext.Path, "manifest.json");
 
                 File.WriteAllText(Path.Combine(tempFolderContext.Path, command.Options.Manifest), JsonConvert.SerializeObject(manifest));
@@ -380,6 +381,7 @@ namespace Microsoft.DotNet.ImageBuilder.Tests
                 PublishImageInfoCommand command = new PublishImageInfoCommand(gitServiceMock.Object, Mock.Of<ILoggerService>());
                 command.Options.ImageInfoPath = file;
                 command.Options.GitOptions = gitOptions;
+                command.Options.AzdoOptions = azdoOptions;
                 command.Options.Manifest = Path.Combine(tempFolderContext.Path, "manifest.json");
 
                 File.WriteAllText(Path.Combine(tempFolderContext.Path, command.Options.Manifest), JsonConvert.SerializeObject(manifest));
@@ -421,6 +423,7 @@ namespace Microsoft.DotNet.ImageBuilder.Tests
             Mock<Network> networkMock = Mock.Get(repositoryMock.Object.Network);
 
             networkMock.Verify(o => o.Push(It.IsAny<Branch>(), It.IsAny<PushOptions>()));
+            networkMock.Verify(o => o.Push(It.IsAny<Remote>(), It.IsAny<string>(), It.IsAny<PushOptions>()));
         }
 
         private static Mock<IRepository> GetRepositoryMock()
